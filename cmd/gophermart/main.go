@@ -81,20 +81,24 @@ func createHandlers(db store.Database, router *route.Mux, sugar zap.SugaredLogge
 								app.OrdersPOST), sugar))) // Сам хендлер
 				r.Get("/orders",
 					app.GzipHandle( // Сжатие
-						app.WithLogging(db,
-							app.OrdersGET, sugar))) // Сам хендлер
+						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							app.WithAuth(
+								app.OrdersGET), sugar))) // Сам хендлер
 				r.Get("/balance",
 					app.GzipHandle( // Сжатие
-						app.WithLogging(db,
-							app.Balance, sugar))) // Сам хендлер
+						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							app.WithAuth(
+								app.Balance), sugar))) // Сам хендлер
 				r.Post("/balance/withdraw",
 					app.GzipHandle( // Сжатие
-						app.WithLogging(db,
-							app.BalanceWithdraw, sugar))) // Сам хендлер
+						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							app.WithAuth(
+								app.BalanceWithdraw), sugar))) // Сам хендлер
 				r.Get("/withdrawals",
 					app.GzipHandle( // Сжатие
-						app.WithLogging(db,
-							app.Withdrawals, sugar))) // Сам хендлер
+						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							app.WithAuth(
+								app.Withdrawals), sugar))) // Сам хендлер
 			})
 		})
 	})

@@ -11,4 +11,11 @@ var (
 	ErrInternalServerCode       = 500
 	ErrInvalidLoginPassword     = errors.New("invalid login/password")
 	ErrInvalidLoginPasswordCode = 401
+	ErrOrderForOtherUser        = errors.New("order exists for another user")
+	ErrOrderForOtherUserCode    = 409
+	ErrOrderInvalidFormat       = errors.New("invalid order format")
+	ErrOrderInvalidFormatCode   = 422
+	ErrOrderNotFound            = errors.New("order not found")
+	ErrOrderForThisUser         = errors.New("order exists for this user")
+	ErrOrderForThisUserCode     = 200
 )

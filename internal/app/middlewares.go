@@ -19,7 +19,7 @@ type (
 )
 
 const (
-	user      myKeyType = "user"
+	userKey   myKeyType = "user"
 	loggerKey logger    = "sugar"
 	dbKey     key       = "db"
 )
@@ -140,7 +140,7 @@ func WithAuth(hf http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Добавляем userID в контекст
-		ctx = context.WithValue(r.Context(), user, userID)
+		ctx = context.WithValue(r.Context(), userKey, userID)
 		ctx = context.WithValue(ctx, dbKey, db)
 		ctx = context.WithValue(ctx, loggerKey, sugar)
 
