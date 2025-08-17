@@ -80,9 +80,10 @@ func (r *UserRepository) GetByLogin(login string) (*User, error) {
 	return &user, err
 }
 
+// Exists Проверяет существует ли пользователь по id
 func (r *UserRepository) Exists(ctx context.Context, login string) (bool, error) {
 	query := `
-		SELECT EXISTS(SELECT 1 FROM users WHERE login = $1)
+		SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)
 	`
 
 	var exists bool

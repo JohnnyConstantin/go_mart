@@ -168,7 +168,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	token, err := jwtService.GenerateToken(user.ID)
 	if err != nil {
 		sugar.Errorf("Login: token generation error: %v", err)
-		http.Error(w, `{"message":"Internal server error"}`, http.StatusInternalServerError)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
 		return
 	}
 
@@ -190,6 +190,22 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 // OrdersPOST Добавление заказов
 func OrdersPOST(w http.ResponseWriter, r *http.Request) {
+
+	//ctx := r.Context()
+	//
+	//// Извлекаем бд из контекста
+	//db, ok := ctx.Value(dbKey).(store.Database)
+	//if !ok {
+	//	http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+	//	return
+	//}
+	//
+	//// Извлекаем логгер из контекста
+	//sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	//if !ok {
+	//	http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+	//	return
+	//}
 
 	w.Write([]byte("I am orders post handler"))
 	w.WriteHeader(http.StatusOK)
