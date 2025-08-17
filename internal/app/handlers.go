@@ -191,24 +191,75 @@ func Login(w http.ResponseWriter, r *http.Request) {
 // OrdersPOST Добавление заказов
 func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 
-	//ctx := r.Context()
-	//
-	//// Извлекаем бд из контекста
-	//db, ok := ctx.Value(dbKey).(store.Database)
-	//if !ok {
-	//	http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-	//	return
-	//}
-	//
-	//// Извлекаем логгер из контекста
-	//sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	//if !ok {
-	//	http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-	//	return
-	//}
+	if r.Header.Get("Content-Type") != "text/plain" {
+		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
+		return
+	}
 
-	w.Write([]byte("I am orders post handler"))
-	w.WriteHeader(http.StatusOK)
+	ctx := r.Context()
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Читаем номер заказа
+	number, err := repository.ReadOrderNumber(r)
+	if err != nil {
+		sugar.Errorf("OrdersPOST: failed to read order number: %v", err)
+		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
+		return
+	}
+
+	// Проверяем номер алгоритмом Луна
+	if !repository.ValidateOrderNumber(number) {
+		http.Error(w, store.ErrOrderInvalidFormat.Error(), store.ErrOrderInvalidFormatCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с заказами
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Создаем заказ
+	order := repository.Order{
+		UserID:     userID,
+		Number:     number,
+		Status:     "NEW",
+		UploadedAt: time.Now(),
+	}
+
+	err = orderRepo.CreateOrder(ctx, &order)
+	switch {
+	case errors.Is(err, store.ErrOrderForOtherUser):
+		http.Error(w, store.ErrOrderForOtherUser.Error(), store.ErrOrderForOtherUserCode)
+		return
+	case errors.Is(err, store.ErrOrderForThisUser):
+		w.WriteHeader(store.ErrOrderForThisUserCode)
+		return
+	case err != nil:
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	default:
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Order is successfully registered"))
+		return
+	}
 }
 
 // OrdersGET Получение заказов
