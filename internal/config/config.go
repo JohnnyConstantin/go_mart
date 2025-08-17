@@ -15,7 +15,7 @@ func init() {
 	flag.StringVar( // Адрес старта сервера
 		&Config.ServerAddress,
 		"a",
-		"localhost:8888",
+		"localhost:8080",
 		"The address and port to start the server on",
 	)
 	flag.StringVar( // Адрес БД
