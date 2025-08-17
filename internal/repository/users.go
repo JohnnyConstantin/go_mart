@@ -74,7 +74,7 @@ func (r *UserRepository) GetByLogin(login string) (*User, error) {
 		Scan(&user.ID, &user.Login, &user.Password, &user.CreatedAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, errors.New("no such user")
+		return nil, store.ErrInvalidLoginPassword
 	}
 
 	return &user, err

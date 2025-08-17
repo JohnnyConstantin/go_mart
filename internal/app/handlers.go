@@ -111,7 +111,80 @@ func Register(w http.ResponseWriter, r *http.Request) {
 // Login Аутентификация пользователя
 func Login(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("I am login handler"))
+	req := models.LoginReq
+	ctx := r.Context()
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с пользователями
+	userRepo := repository.NewUserRepository(db)
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sugar.Errorf("Login: decode error: %v", err)
+		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
+		return
+	}
+
+	// Валидация
+	if req.Login == "" || req.Password == "" {
+		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
+		return
+	}
+
+	// Получаем пользователя из БД
+	user, err := userRepo.GetByLogin(req.Login)
+	if err != nil {
+		if errors.Is(err, store.ErrInvalidLoginPassword) {
+			http.Error(w, store.ErrInvalidLoginPassword.Error(), store.ErrInvalidLoginPasswordCode)
+			return
+		}
+		sugar.Errorf("Login: DB error: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Переходим на следующий уровень логики и передаем секрет
+	jwtService := auth.NewJWTService(config.Config.JWTSecret)
+
+	// Проверяем пароль
+	if !user.CheckPassword(req.Password) {
+		http.Error(w, store.ErrInvalidLoginPassword.Error(), store.ErrInvalidLoginPasswordCode)
+		return
+	}
+
+	// Генерируем JWT токен
+	token, err := jwtService.GenerateToken(user.ID)
+	if err != nil {
+		sugar.Errorf("Login: token generation error: %v", err)
+		http.Error(w, `{"message":"Internal server error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// Устанавливаем cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	// Возвращаем успешный ответ
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 }
 
