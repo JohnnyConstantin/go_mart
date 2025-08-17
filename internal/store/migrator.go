@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"io/fs"
 	"path/filepath"
@@ -10,52 +11,56 @@ import (
 	"strings"
 )
 
+// Приходится вшивать миграции в бинарь. Не придумал как иначе для автотестов надежно передать миграции
+//
+//go:embed migrations/*.sql
+var embedMigrations embed.FS
+
 // Migrator Объект, выполняющий миграции для базы данных
 type Migrator struct {
 	DB  Database
-	dir fs.FS // Необходимо для динамической конфигурации директории с миграциями
+	dir fs.FS
 }
 
-func NewMigrator(db Database, dir fs.FS) *Migrator {
-	return &Migrator{DB: db, dir: dir}
+func NewMigrator(db Database) *Migrator {
+	return &Migrator{DB: db, dir: embedMigrations}
 }
 
 func (m *Migrator) Migrate(ctx context.Context) error {
-	// Читаем файлы миграций
-	files, err := fs.ReadDir(m.dir, ".")
+	// Вытаскиваем из embedded папку migrations с файлами внутри
+	files, err := fs.ReadDir(m.dir, "migrations")
 	if err != nil {
-		return fmt.Errorf("failed to read migrations dir: %v", err)
+		return fmt.Errorf("failed to read migrations dir: %w", err)
 	}
 
-	// Сортируем файлы по порядку миграций
+	// Создание таблицы для учета миграций (наверное overkill, но помогает с автотестами и в целом хорошая практика)
+	if _, err := m.DB.Exec(ctx, `
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INT PRIMARY KEY,
+            applied_at TIMESTAMP NOT NULL DEFAULT NOW()
+        );
+    `); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	// сортируем
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Name() < files[j].Name()
 	})
 
-	// Создаем таблицу для учета выполненных миграций (overkill, но вроде практика хорошая)
-	if _, err := m.DB.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version INT PRIMARY KEY,
-			applied_at TIMESTAMP NOT NULL DEFAULT NOW()
-		)
-	`); err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
-	}
-
-	// Применяем миграции по порядку
+	// Проходимся по миграциям
 	for _, file := range files {
 		if !strings.HasSuffix(file.Name(), ".up.sql") {
 			continue
 		}
 
-		// Извлекаем номер версии из имени файла
 		versionStr := strings.Split(file.Name(), "_")[0]
 		version, err := strconv.Atoi(versionStr)
 		if err != nil {
 			return fmt.Errorf("invalid migration version in filename %s: %w", file.Name(), err)
 		}
 
-		// Проверяем, не была ли уже применена эта миграция
+		// Проверяем выполнялась ли эта миграция
 		var exists bool
 		err = m.DB.QueryRow(ctx,
 			"SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)",
@@ -66,27 +71,36 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		}
 
 		if exists {
+			fmt.Printf("Migration %d already applied, skipping\n", version)
 			continue
 		}
 
-		// Читаем SQL-запрос из файла
-		sqlBytes, err := fs.ReadFile(m.dir, file.Name())
+		// Вытаскиваем содержимое
+		migrationPath := filepath.Join("migrations", file.Name())
+		sqlBytes, err := fs.ReadFile(m.dir, migrationPath)
 		if err != nil {
-			return fmt.Errorf("failed to read migration file %s: %w", file.Name(), err)
+			return fmt.Errorf("failed to read migration file %s: %w", migrationPath, err)
 		}
 
-		// Выполняем миграцию в транзакции
+		// Выполнение транзации
 		tx, err := m.DB.BeginTx(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
-		defer tx.Rollback(ctx)
 
+		defer func() {
+			if err != nil {
+				tx.Rollback(ctx)
+			}
+		}()
+
+		// Выполняем миграцию
 		if _, err := tx.Exec(ctx, string(sqlBytes)); err != nil {
-			return fmt.Errorf("failed to execute migration %s: %w", file.Name(), err)
+			return fmt.Errorf("failed to execute migration %s: %w\nSQL: %s",
+				file.Name(), err, string(sqlBytes))
 		}
 
-		// Записываем факт выполнения миграции
+		// Фиксируем в бд выполненую миграцию
 		if _, err := tx.Exec(ctx,
 			"INSERT INTO schema_migrations (version) VALUES ($1)",
 			version,
@@ -94,11 +108,12 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 			return fmt.Errorf("failed to record migration version %d: %w", version, err)
 		}
 
+		// Коммитимся
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to commit migration %d: %w", version, err)
 		}
 
-		fmt.Printf("Applied migration: %s\n", file.Name())
+		fmt.Printf("Successfully applied migration: %s\n", file.Name())
 	}
 
 	return nil

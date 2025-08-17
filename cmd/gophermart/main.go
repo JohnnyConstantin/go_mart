@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"embed"
 	"flag"
 	"github.com/JohnnyConstantin/go_mart/internal/app"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
@@ -13,11 +12,6 @@ import (
 	"net/http"
 	"os"
 )
-
-// Приходится вшивать миграции в бинарь. Не придумал как иначе для автотестов надежно передать миграции
-//
-//go:embed migrations/*.sql
-var migrationsFS embed.FS
 
 var sugar zap.SugaredLogger
 
@@ -128,7 +122,7 @@ func initStorage() (store.Database, error) {
 		return nil, err
 	}
 
-	migrator := store.NewMigrator(db, migrationsFS)
+	migrator := store.NewMigrator(db)
 	if err := migrator.Migrate(context.Background()); err != nil {
 		log.Fatalf("Failed to apply migrations: %v", err)
 	}
