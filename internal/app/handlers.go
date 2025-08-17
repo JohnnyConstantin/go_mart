@@ -238,10 +238,9 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 
 	// Создаем заказ
 	order := repository.Order{
-		UserID:     userID,
-		Number:     number,
-		Status:     "NEW",
-		UploadedAt: time.Now(),
+		UserID: userID,
+		Number: number,
+		Status: "NEW",
 	}
 
 	err = orderRepo.CreateOrder(ctx, &order)
@@ -265,8 +264,6 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 // OrdersGET Получение заказов
 func OrdersGET(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("I am orders get handler"))
-	w.WriteHeader(http.StatusOK)
 }
 
 // Balance Получение баланса кошелька
