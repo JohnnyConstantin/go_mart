@@ -12,12 +12,12 @@ import (
 
 // Migrator Объект, выполняющий миграции для базы данных
 type Migrator struct {
-	Db  Database
+	DB  Database
 	dir fs.FS // Необходимо для динамической конфигурации директории с миграциями
 }
 
 func NewMigrator(db Database, dir fs.FS) *Migrator {
-	return &Migrator{Db: db, dir: dir}
+	return &Migrator{DB: db, dir: dir}
 }
 
 func (m *Migrator) Migrate(ctx context.Context) error {
@@ -33,7 +33,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 	})
 
 	// Создаем таблицу для учета выполненных миграций (overkill, но вроде практика хорошая)
-	if _, err := m.Db.Exec(ctx, `
+	if _, err := m.DB.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INT PRIMARY KEY,
 			applied_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -57,7 +57,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 
 		// Проверяем, не была ли уже применена эта миграция
 		var exists bool
-		err = m.Db.QueryRow(ctx,
+		err = m.DB.QueryRow(ctx,
 			"SELECT EXISTS(SELECT 1 FROM schema_migrations WHERE version = $1)",
 			version,
 		).Scan(&exists)
@@ -76,7 +76,7 @@ func (m *Migrator) Migrate(ctx context.Context) error {
 		}
 
 		// Выполняем миграцию в транзакции
-		tx, err := m.Db.BeginTx(ctx)
+		tx, err := m.DB.BeginTx(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to begin transaction: %w", err)
 		}
@@ -132,7 +132,7 @@ func (m *Migrator) Rollback(ctx context.Context, version int) error {
 	}
 
 	// Выполняем откат в транзакции
-	tx, err := m.Db.BeginTx(ctx)
+	tx, err := m.DB.BeginTx(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
