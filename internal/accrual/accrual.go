@@ -25,7 +25,7 @@ func NewProcessor(orderRepo repository.OrderRepository, accrualURL string, sugar
 		client:       &http.Client{Timeout: 5 * time.Second},
 		accrualURL:   accrualURL,
 		sugar:        sugar,
-		pollInterval: 1 * time.Second,
+		pollInterval: 2 * time.Second, // Скорость опроса, поставил небольшую.
 	}
 }
 

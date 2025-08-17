@@ -18,4 +18,6 @@ var (
 	ErrOrderNotFound            = errors.New("order not found")
 	ErrOrderForThisUser         = errors.New("order exists for this user")
 	ErrOrderForThisUserCode     = 200
+	ErrNoContent                = errors.New("no content")
+	ErrNoContentCode            = 204
 )
