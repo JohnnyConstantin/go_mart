@@ -10,6 +10,7 @@ import (
 	"github.com/JohnnyConstantin/go_mart/models"
 	"go.uber.org/zap"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -263,7 +264,75 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 
 // OrdersGET Получение заказов
 func OrdersGET(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с заказами
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Получаем заказы пользователя
+	orders, err := orderRepo.GetUserOrders(ctx, userID)
+	if err != nil {
+		sugar.Errorf("OrdersGET: failed to get orders: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Если заказов нет - возвращаем 204
+	if len(orders) == 0 {
+		w.WriteHeader(store.ErrNoContentCode)
+		w.Write([]byte(store.ErrNoContent.Error()))
+		return
+	}
+
+	// Формируем ответ
+	response := make([]models.OrderResponse, 0, len(orders))
+	for _, order := range orders {
+		resp := models.OrderResponse{
+			Number:     order.Number,
+			Status:     order.Status,
+			UploadedAt: order.UploadedAt,
+		}
+
+		// Добавляем accrual только для PROCESSED статуса
+		if order.Status == "PROCESSED" {
+			resp.Accrual = &order.Accrual
+		}
+
+		response = append(response, resp)
+	}
+
+	// Сортируем по дате загрузки (новые сначала)
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].UploadedAt.After(response[j].UploadedAt)
+	})
+
+	// Отправляем ответ
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		sugar.Errorf("OrdersGET: failed to encode response: %v", err)
+	}
 }
 
 // Balance Получение баланса кошелька

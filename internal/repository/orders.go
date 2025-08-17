@@ -152,3 +152,34 @@ func ReadOrderNumber(r *http.Request) (string, error) {
 	}
 	return string(body[:n]), nil
 }
+
+// GetUserOrders Получение объектов заказов для конкретного пользователя
+func (r *OrderRepository) GetUserOrders(ctx context.Context, userID string) ([]Order, error) {
+	query := `
+		SELECT number, status, accrual, uploaded_at
+		FROM orders
+		WHERE user_id = $1
+		ORDER BY uploaded_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query user orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []Order
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan order: %w", err)
+		}
+		orders = append(orders, o)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return orders, nil
+}
