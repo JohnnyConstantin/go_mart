@@ -77,7 +77,8 @@ func createHandlers(db store.Database, router *route.Mux, sugar zap.SugaredLogge
 				r.Post("/orders",
 					app.GzipHandle( // Сжатие
 						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.OrdersPOST, sugar))) // Сам хендлер
+							app.WithAuth(
+								app.OrdersPOST), sugar))) // Сам хендлер
 				r.Get("/orders",
 					app.GzipHandle( // Сжатие
 						app.WithLogging(db,

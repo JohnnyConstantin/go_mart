@@ -2,6 +2,8 @@ package auth
 
 import (
 	"errors"
+	"fmt"
+	"github.com/JohnnyConstantin/go_mart/internal/config"
 	"github.com/golang-jwt/jwt/v5"
 	"time"
 )
@@ -48,4 +50,24 @@ func (s *JWTService) ParseToken(tokenString string) (string, error) {
 	}
 
 	return "", errors.New("invalid token")
+}
+
+// ValidateJWTToken Валидация JWT токена
+func ValidateJWTToken(tokenString string) (string, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return []byte(config.Config.JWTSecret), nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		return claims["user_id"].(string), nil
+	}
+
+	return "", fmt.Errorf("invalid token")
 }
