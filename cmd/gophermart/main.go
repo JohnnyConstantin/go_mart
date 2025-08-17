@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"flag"
 	"github.com/JohnnyConstantin/go_mart/internal/app"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
@@ -12,6 +13,11 @@ import (
 	"net/http"
 	"os"
 )
+
+// Приходится вшивать миграции в бинарь. Не придумал как иначе для автотестов надежно передать миграции
+//
+//go:embed migrations/*.sql
+var migrationsFS embed.FS
 
 var sugar zap.SugaredLogger
 
@@ -26,12 +32,6 @@ func main() {
 
 	// Создали экземпляр и в дальнейшем прокидываем его в middleware с логированием
 	sugar = *logger.Sugar()
-
-	// записываем в лог, что сервер запускается
-	sugar.Infow(
-		"Starting server...",
-		"addr", config.Config.ServerAddress,
-	)
 
 	// Парсим флаги и енвы. Енвы вынесены в отдельную функцию
 	flag.Parse()
@@ -54,7 +54,11 @@ func main() {
 	// Инициализация хендлеров
 	createHandlers(db, router, sugar)
 
-	//Инициализация доп. слоя логики - репозиториев, для работы с БД
+	// записываем в лог, что сервер запускается
+	sugar.Infow(
+		"Starting server...",
+		"addr", config.Config.ServerAddress,
+	)
 
 	err = http.ListenAndServe(config.Config.ServerAddress, router)
 	if err != nil {
@@ -124,7 +128,7 @@ func initStorage() (store.Database, error) {
 		return nil, err
 	}
 
-	migrator := store.NewMigrator(db, os.DirFS("/Users/k.zubchenko/go-musthave-diploma-tpl/internal/migrations"))
+	migrator := store.NewMigrator(db, migrationsFS)
 	if err := migrator.Migrate(context.Background()); err != nil {
 		log.Fatalf("Failed to apply migrations: %v", err)
 	}
