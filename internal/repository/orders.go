@@ -86,6 +86,33 @@ func (r *OrderRepository) GetOrderByNumber(ctx context.Context, number string) (
 	return &o, err
 }
 
+func (r *OrderRepository) GetOrdersForProcessing(ctx context.Context) ([]Order, error) {
+	query := `
+		SELECT id, user_id, number, status, accrual, uploaded_at
+		FROM orders
+		WHERE status IN ('NEW', 'PROCESSING', 'REGISTERED')
+		ORDER BY uploaded_at ASC
+		LIMIT 100
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []Order
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.ID, &o.UserID, &o.Number, &o.Status, &o.Accrual, &o.UploadedAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+
+	return orders, nil
+}
+
 func (r *OrderRepository) UpdateOrder(ctx context.Context, order *Order) error {
 	query := `
 		UPDATE orders

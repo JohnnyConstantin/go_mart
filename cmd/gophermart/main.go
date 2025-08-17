@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"flag"
+	"github.com/JohnnyConstantin/go_mart/internal/accrual"
 	"github.com/JohnnyConstantin/go_mart/internal/app"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
+	"github.com/JohnnyConstantin/go_mart/internal/repository"
 	"github.com/JohnnyConstantin/go_mart/internal/store"
 	route "github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -53,6 +55,20 @@ func main() {
 		"Starting server...",
 		"addr", config.Config.ServerAddress,
 	)
+
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Инициализация процессора начислений
+	accrualProcessor := accrual.NewProcessor(
+		*orderRepo,
+		config.Config.AccrualAddress,
+		&sugar,
+	)
+
+	// Запуск в фоне
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	accrualProcessor.Start(ctx)
 
 	err = http.ListenAndServe(config.Config.ServerAddress, router)
 	if err != nil {

@@ -11,3 +11,9 @@ var LoginReq struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
 }
+
+var AccrualResult struct {
+	Order   string  `json:"order"`
+	Status  string  `json:"status"`
+	Accrual float64 `json:"accrual,omitempty"`
+}
