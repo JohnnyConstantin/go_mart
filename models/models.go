@@ -28,3 +28,22 @@ type OrderResponse struct {
 	Accrual    *float64  `json:"accrual,omitempty"`
 	UploadedAt time.Time `json:"uploaded_at"`
 }
+
+// WithdrawRequest Запрос на списание средств
+type WithdrawRequest struct {
+	Order string  `json:"order"`
+	Sum   float64 `json:"sum"`
+}
+
+// BalanceResponse Ответ на запрос баланса
+type BalanceResponse struct {
+	Current   string  `json:"current"`
+	Withdrawn float64 `json:"withdrawn"`
+}
+
+// WithdrawalResponse Ответ на запрос всех списаний
+type WithdrawalResponse struct {
+	Order       string    `json:"order"`
+	Sum         float64   `json:"sum"`
+	ProcessedAt time.Time `json:"processed_at"`
+}

@@ -183,3 +183,69 @@ func (r *OrderRepository) GetUserOrders(ctx context.Context, userID string) ([]O
 
 	return orders, nil
 }
+
+func (r *OrderRepository) Withdraw(ctx context.Context, order *Order) error {
+	tx, err := r.db.BeginTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO orders (user_id, number, status, accrual)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (number) DO UPDATE
+		SET status = EXCLUDED.status,
+		    accrual = EXCLUDED.accrual
+	`, order.UserID, order.Number, order.Status, order.Accrual)
+	if err != nil {
+		return fmt.Errorf("insert order: %w", err)
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *OrderRepository) CalculateUserBalance(ctx context.Context, userID string) (float64, error) {
+	var balance *float64
+	err := r.db.QueryRow(ctx, `
+		SELECT COALESCE(SUM(accrual), 0)
+		FROM orders
+		WHERE user_id = $1
+	`, userID).Scan(&balance)
+
+	if err != nil {
+		return 0, fmt.Errorf("calculate balance: %v", err)
+	}
+
+	return *balance, nil
+}
+
+func (r *OrderRepository) GetWithdrawals(ctx context.Context, userID string) ([]Order, error) {
+	query := `
+		SELECT number, accrual, uploaded_at
+		FROM orders
+		WHERE user_id = $1 AND status = 'WITHDRAWN'
+		ORDER BY uploaded_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query withdrawals: %w", err)
+	}
+	defer rows.Close()
+
+	var withdrawals []Order
+	for rows.Next() {
+		var o Order
+		if err := rows.Scan(&o.Number, &o.Accrual, &o.UploadedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan withdrawal: %w", err)
+		}
+		withdrawals = append(withdrawals, o)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	return withdrawals, nil
+}
