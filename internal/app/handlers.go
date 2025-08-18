@@ -3,7 +3,6 @@ package app
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/JohnnyConstantin/go_mart/internal/auth"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
 	"github.com/JohnnyConstantin/go_mart/internal/repository"
@@ -387,7 +386,7 @@ func Balance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := models.BalanceResponse{
-		Current:   fmt.Sprintf("%.2f", balance),
+		Current:   balance,
 		Withdrawn: withdrawn,
 	}
 

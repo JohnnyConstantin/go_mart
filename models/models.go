@@ -37,7 +37,7 @@ type WithdrawRequest struct {
 
 // BalanceResponse Ответ на запрос баланса
 type BalanceResponse struct {
-	Current   string  `json:"current"`
+	Current   float64 `json:"current"`
 	Withdrawn float64 `json:"withdrawn"`
 }
 
