@@ -81,7 +81,7 @@ func (p *Processor) processOrder(ctx context.Context, order repository.Order) {
 		return
 	}
 
-	result := models.AccrualResult
+	result := models.AccrualResult{}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		p.sugar.Errorf("Failed to decode response for order %s: %v", order.Number, err)

@@ -36,7 +36,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	userRepo := repository.NewUserRepository(db)
 
 	// Парсим входные данные в модельку регистрации
-	req := models.RegistrationReq
+	req := models.RegistrationReq{}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		sugar.Errorf("Register: failed to decode request: %v", err)
@@ -112,7 +112,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 // Login Аутентификация пользователя
 func Login(w http.ResponseWriter, r *http.Request) {
 
-	req := models.LoginReq
+	req := models.LoginReq{}
 	ctx := r.Context()
 
 	// Извлекаем бд из контекста
