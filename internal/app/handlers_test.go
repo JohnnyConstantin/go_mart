@@ -248,6 +248,8 @@ func TestRegister(t *testing.T) {
 					t.Error("expected auth cookie, got none")
 				}
 			}
+
+			defer resp.Body.Close()
 		})
 	}
 }
@@ -297,6 +299,8 @@ func TestLogin(t *testing.T) {
 					t.Error("expected auth cookie, got none")
 				}
 			}
+
+			defer resp.Body.Close()
 		})
 	}
 }
@@ -341,6 +345,8 @@ func TestOrdersPOST(t *testing.T) {
 			if resp.StatusCode != tt.expectedCode {
 				t.Errorf("expected status %d, got %d", tt.expectedCode, resp.StatusCode)
 			}
+
+			defer resp.Body.Close()
 		})
 	}
 }
@@ -384,6 +390,8 @@ func TestOrdersGET(t *testing.T) {
 					t.Error("expected orders, got none")
 				}
 			}
+
+			defer resp.Body.Close()
 		})
 	}
 }
@@ -421,6 +429,8 @@ func TestBalanceWithdraw(t *testing.T) {
 			if resp.StatusCode != tt.expectedCode {
 				t.Errorf("expected status %d, got %d", tt.expectedCode, resp.StatusCode)
 			}
+
+			defer resp.Body.Close()
 		})
 	}
 }
@@ -455,6 +465,8 @@ func TestWithdrawals(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectedCode, resp.StatusCode)
 			}
 
+			defer resp.Body.Close()
+
 			if tt.expectedCode == http.StatusOK {
 				var withdrawals []models.WithdrawalResponse
 				if err := json.NewDecoder(resp.Body).Decode(&withdrawals); err != nil {
@@ -464,6 +476,7 @@ func TestWithdrawals(t *testing.T) {
 					t.Error("expected withdrawals, got none")
 				}
 			}
+
 		})
 	}
 }
