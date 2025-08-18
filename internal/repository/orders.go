@@ -155,10 +155,11 @@ func ReadOrderNumber(r *http.Request) (string, error) {
 
 // GetUserOrders Получение объектов заказов для конкретного пользователя
 func (r *OrderRepository) GetUserOrders(ctx context.Context, userID string) ([]Order, error) {
+	//Здесь в запросе исключаю WITHDRAWN статусы, потому что под них отдельная ручка и в целом это логически другие объекты
 	query := `
 		SELECT number, status, accrual, uploaded_at
 		FROM orders
-		WHERE user_id = $1
+		WHERE user_id = $1 AND status != 'WITHDRAWN'
 		ORDER BY uploaded_at DESC
 	`
 
@@ -184,6 +185,7 @@ func (r *OrderRepository) GetUserOrders(ctx context.Context, userID string) ([]O
 	return orders, nil
 }
 
+// Withdraw Транзакция под вывод средств
 func (r *OrderRepository) Withdraw(ctx context.Context, order *Order) error {
 	tx, err := r.db.BeginTx(ctx)
 	if err != nil {
@@ -205,6 +207,7 @@ func (r *OrderRepository) Withdraw(ctx context.Context, order *Order) error {
 	return tx.Commit(ctx)
 }
 
+// CalculateUserBalance Вытаскивание суммы всех accrual конкретного пользователя = баланс
 func (r *OrderRepository) CalculateUserBalance(ctx context.Context, userID string) (float64, error) {
 	var balance *float64
 	err := r.db.QueryRow(ctx, `
@@ -220,6 +223,7 @@ func (r *OrderRepository) CalculateUserBalance(ctx context.Context, userID strin
 	return *balance, nil
 }
 
+// GetWithdrawals Получение всех выводов пользователя
 func (r *OrderRepository) GetWithdrawals(ctx context.Context, userID string) ([]Order, error) {
 	query := `
 		SELECT number, accrual, uploaded_at
