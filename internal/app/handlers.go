@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/JohnnyConstantin/go_mart/internal/auth"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
 	"github.com/JohnnyConstantin/go_mart/internal/repository"
@@ -338,20 +339,203 @@ func OrdersGET(w http.ResponseWriter, r *http.Request) {
 // Balance Получение баланса кошелька
 func Balance(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("I am balance handler"))
+	ctx := r.Context()
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с заказами
+	orderRepo := repository.NewOrderRepository(db)
+
+	balance, err := orderRepo.CalculateUserBalance(ctx, userID)
+	if err != nil {
+		sugar.Errorf("BalanceWithdraw: get balance error: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Получаем списания (заказы со статусом WITHDRAWN)
+	withdrawals, err := orderRepo.GetWithdrawals(ctx, userID)
+	if err != nil {
+		sugar.Errorf("WithdrawalsGET: failed to get withdrawals: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	withdrawn := 0.0
+
+	for _, wd := range withdrawals {
+		withdrawn += -1 * wd.Accrual
+	}
+
+	response := models.BalanceResponse{
+		Current:   fmt.Sprintf("%.2f", balance),
+		Withdrawn: withdrawn,
+	}
+
+	// Отправляем ответ
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		sugar.Errorf("OrdersGET: failed to encode response: %v", err)
+	}
+
 }
 
 // BalanceWithdraw Снятие денег с кошелька
 func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("I am balance withdraw handler"))
+	ctx := r.Context()
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	var req models.WithdrawRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		sugar.Errorf("BalanceWithdraw: decode error: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Проверка номера заказа алгоритмом Луна
+	if !repository.ValidateOrderNumber(req.Order) {
+		http.Error(w, store.ErrOrderInvalidFormat.Error(), store.ErrOrderInvalidFormatCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с заказами
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Проверка баланса
+	balance, err := orderRepo.CalculateUserBalance(ctx, userID)
+	if err != nil {
+		sugar.Errorf("BalanceWithdraw: get balance error: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	if balance < req.Sum {
+		http.Error(w, store.ErrInsufficientBalance.Error(), store.ErrInsufficientBalanceCode)
+		return
+	}
+
+	// Создаем запись о списании
+	order := &repository.Order{
+		UserID:  userID,
+		Number:  req.Order,
+		Status:  "WITHDRAWN",
+		Accrual: -req.Sum, // Отрицательное значение
+	}
+
+	// Выполняем в транзакции
+	err = orderRepo.Withdraw(ctx, order)
+	if err != nil {
+		sugar.Errorf("BalanceWithdraw: withdraw error: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
 // Withdrawals Получение истории снятий с кошелька
 func Withdrawals(w http.ResponseWriter, r *http.Request) {
 
-	w.Write([]byte("I am withdraws handler"))
+	ctx := r.Context()
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Создаем слой репозитория для работы с заказами
+	orderRepo := repository.NewOrderRepository(db)
+
+	// Получаем списания (заказы со статусом WITHDRAWN)
+	withdrawals, err := orderRepo.GetWithdrawals(ctx, userID)
+	if err != nil {
+		sugar.Errorf("WithdrawalsGET: failed to get withdrawals: %v", err)
+		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
+		return
+	}
+
+	// Если списаний нет - возвращаем 204
+	if len(withdrawals) == 0 {
+		w.WriteHeader(store.ErrNoContentCode)
+		return
+	}
+
+	// Формируем ответ (сумма без минуса)
+	response := make([]models.WithdrawalResponse, 0, len(withdrawals))
+	for _, wd := range withdrawals {
+		response = append(response, models.WithdrawalResponse{
+			Order:       wd.Number,
+			Sum:         -wd.Accrual, // Убираем минус
+			ProcessedAt: wd.UploadedAt,
+		})
+	}
+
+	// Сортируем по дате (новые сначала)
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].ProcessedAt.After(response[j].ProcessedAt)
+	})
+
+	// Отправляем ответ
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		sugar.Errorf("WithdrawalsGET: failed to encode response: %v", err)
+	}
 }

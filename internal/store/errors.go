@@ -20,4 +20,6 @@ var (
 	ErrOrderForThisUserCode     = 200
 	ErrNoContent                = errors.New("no content")
 	ErrNoContentCode            = 204
+	ErrInsufficientBalance      = errors.New("insufficient balance")
+	ErrInsufficientBalanceCode  = 402
 )
