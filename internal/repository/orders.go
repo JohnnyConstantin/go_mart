@@ -167,24 +167,38 @@ func (r *OrderRepository) GetUserOrders(ctx context.Context, userID string) ([]O
 
 // Withdraw Транзакция под вывод средств
 func (r *OrderRepository) Withdraw(ctx context.Context, order *Order) error {
-	tx, err := r.db.BeginTx(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx)
+	// Весь запрос сделал CTE, теперь пользователь лочится и атомарность на стороне Postgres
+	result, err := r.db.Exec(ctx, `
+        WITH user_lock AS (
+            SELECT 1 FROM users WHERE id = $1 FOR UPDATE
+        ),
+        current_balance AS (
+            SELECT COALESCE(SUM(accrual), 0) as balance 
+            FROM orders 
+            WHERE user_id = $1
+        ),
+        insertion AS (
+            INSERT INTO orders (user_id, number, status, accrual, created_at)
+            SELECT $1, $2, $3, $4, NOW()
+            WHERE (SELECT balance FROM current_balance) + $4 >= 0
+            ON CONFLICT (number) DO UPDATE
+            SET status = EXCLUDED.status,
+                accrual = EXCLUDED.accrual,
+                updated_at = NOW()
+            RETURNING 1
+        )
+        SELECT 1 FROM insertion
+    `, order.UserID, order.Number, order.Status, order.Accrual)
 
-	_, err = tx.Exec(ctx, `
-		INSERT INTO orders (user_id, number, status, accrual)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (number) DO UPDATE
-		SET status = EXCLUDED.status,
-		    accrual = EXCLUDED.accrual
-	`, order.UserID, order.Number, order.Status, order.Accrual)
 	if err != nil {
-		return fmt.Errorf("insert order: %w", err)
+		return err
 	}
 
-	return tx.Commit(ctx)
+	if result == 0 {
+		return store.ErrInsufficientBalance
+	}
+
+	return nil
 }
 
 // CalculateUserBalance Вытаскивание суммы всех accrual конкретного пользователя = баланс

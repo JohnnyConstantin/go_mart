@@ -62,6 +62,7 @@ func main() {
 		*orderRepo,
 		config.Config.AccrualAddress,
 		&sugar,
+		5, // Допустим, 5 воркеров
 	)
 
 	// Запуск в фоне

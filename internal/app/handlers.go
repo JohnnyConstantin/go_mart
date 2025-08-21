@@ -367,19 +367,6 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 	// Создаем слой репозитория для работы с заказами
 	orderRepo := repository.NewOrderRepository(db)
 
-	// Проверка баланса
-	balance, err := orderRepo.CalculateUserBalance(ctx, userID)
-	if err != nil {
-		sugar.Errorf("BalanceWithdraw: get balance error: %v", err)
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	if balance < req.Sum {
-		http.Error(w, store.ErrInsufficientBalance.Error(), store.ErrInsufficientBalanceCode)
-		return
-	}
-
 	// Создаем запись о списании
 	order := &repository.Order{
 		UserID:  userID,
@@ -388,9 +375,12 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 		Accrual: -req.Sum, // Отрицательное значение
 	}
 
-	// Выполняем в транзакции
+	// Выполняем в транзакции (перенес логику вычисления ненулевого баланса в саму операцию)
 	err = orderRepo.Withdraw(ctx, order)
 	if err != nil {
+		if errors.Is(err, store.ErrInsufficientBalance) {
+			http.Error(w, store.ErrInsufficientBalance.Error(), store.ErrInsufficientBalanceCode)
+		}
 		sugar.Errorf("BalanceWithdraw: withdraw error: %v", err)
 		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
 		return

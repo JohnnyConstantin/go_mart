@@ -50,7 +50,7 @@ func OpenDB(ctx context.Context, dsn string) (Database, error) {
 // Имплементации методов:
 
 func (db *postgresDB) BeginTx(ctx context.Context) (Transaction, error) {
-	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{})
+	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{}) // По дефолту уровень изоляции RC
 	if err != nil {
 		return nil, err
 	}
