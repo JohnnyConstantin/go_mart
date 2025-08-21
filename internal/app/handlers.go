@@ -24,6 +24,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	db, sugar, err := getHandlersContexts(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), store.ErrInternalServerCode)
+		return
 	}
 
 	// Создаем слой репозитория для работы с пользователями
@@ -113,6 +114,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	db, sugar, err := getHandlersContexts(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), store.ErrInternalServerCode)
+		return
 	}
 
 	// Создаем слой репозитория для работы с пользователями
@@ -349,6 +351,7 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), store.ErrInternalServerCode)
+		return
 	}
 
 	var req models.WithdrawRequest
@@ -399,6 +402,7 @@ func Withdrawals(w http.ResponseWriter, r *http.Request) {
 	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), store.ErrInternalServerCode)
+		return
 	}
 
 	// Создаем слой репозитория для работы с заказами
@@ -447,6 +451,8 @@ func getHandlersContexts(ctx context.Context) (store.Database, zap.SugaredLogger
 	// Извлекаем логгер из контекста
 	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
 	if !ok {
+		// По идее, т.к. инициализация в main, логгер не должен отсутствовать. Однако, если отсутствует, то выкидываю
+		//  InternalError, но не логирую. Можно в теории panic вызывать. Решил более мягко завершать работу программы
 		return nil, zap.SugaredLogger{}, store.ErrInternalServer
 	}
 
