@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"github.com/JohnnyConstantin/go_mart/internal/accrual"
 	"github.com/JohnnyConstantin/go_mart/internal/app"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
@@ -12,31 +11,31 @@ import (
 	"go.uber.org/zap"
 	"log"
 	"net/http"
-	"os"
 )
 
-var sugar zap.SugaredLogger
-
 func main() {
+	// Занес объявление переменной логгера внутрь main. Затем передаю в необходимые функции как объект
+	var sugar zap.SugaredLogger
 
 	//Создаём предустановленный регистратор zap
 	logger, err := zap.NewDevelopment()
 	if err != nil {
-		panic(err)
+		// Фаталимся через вывод ошибки с последующим os.exit(1)
+		log.Fatal("failed to initialize logger")
 	}
 	defer logger.Sync()
 
 	// Создали экземпляр и в дальнейшем прокидываем его в middleware с логированием
 	sugar = *logger.Sugar()
 
-	// Парсим флаги и енвы. Енвы вынесены в отдельную функцию
-	flag.Parse()
-	loadEnvs()
+	// Парсим флаги и енвы
+	config.GetConfig()
 
 	// Инициализация подключения к БД
-	db, err := initStorage()
+	db, err := initStorage(sugar)
 	if err != nil {
-		os.Exit(1)
+		// Фаталимся через вывод ошибки с последующим os.exit(1)
+		log.Fatal("Failed to initialize storage")
 	}
 
 	//Если вернулся хендлер к БД (т.е. успешно создано соединение к БД), то закрываем после завершения программы
@@ -48,7 +47,7 @@ func main() {
 	router := route.NewRouter()
 
 	// Инициализация хендлеров
-	createHandlers(db, router, sugar)
+	app.CreateHandlers(db, router, sugar)
 
 	// записываем в лог, что сервер запускается
 	sugar.Infow(
@@ -76,68 +75,9 @@ func main() {
 	}
 }
 
-func createHandlers(db store.Database, router *route.Mux, sugar zap.SugaredLogger) {
-
-	//Накидываем хендлеры на роуты
-	router.Route("/", func(r route.Router) {
-		r.Route("/api", func(r route.Router) {
-			r.Route("/user", func(r route.Router) {
-				r.Post("/register",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.Register, sugar))) // Сам хендлер
-				r.Post("/login",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.Login, sugar))) // Сам хендлер
-				r.Post("/orders",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.WithAuth(
-								app.OrdersPOST), sugar))) // Сам хендлер
-				r.Get("/orders",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.WithAuth(
-								app.OrdersGET), sugar))) // Сам хендлер
-				r.Get("/balance",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.WithAuth(
-								app.Balance), sugar))) // Сам хендлер
-				r.Post("/balance/withdraw",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.WithAuth(
-								app.BalanceWithdraw), sugar))) // Сам хендлер
-				r.Get("/withdrawals",
-					app.GzipHandle( // Сжатие
-						app.WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
-							app.WithAuth(
-								app.Withdrawals), sugar))) // Сам хендлер
-			})
-		})
-	})
-}
-
-func loadEnvs() {
-	//Подгружаем переменные окружения при наличии
-	envServerAddress, ok := os.LookupEnv("RUN_ADDRESS")
-	if ok && envServerAddress != "" {
-		config.Config.ServerAddress = envServerAddress
-	}
-	envDatabaseURL, ok := os.LookupEnv("DATABASE_URI")
-	if ok && envDatabaseURL != "" {
-		config.Config.DatabaseURL = envDatabaseURL
-	}
-	envAccrualAddress, ok := os.LookupEnv("ACCRUAL_SYSTEM_ADDRESS")
-	if ok && envAccrualAddress != "" {
-		config.Config.AccrualAddress = envAccrualAddress
-	}
-}
-
-func initStorage() (store.Database, error) {
-	db, err := store.OpenDB(config.Config.DatabaseURL)
+func initStorage(sugar zap.SugaredLogger) (store.Database, error) {
+	ctx := context.Background()
+	db, err := store.OpenDB(ctx, config.Config.DatabaseURL)
 	if err != nil {
 		sugar.Error("Could not connect to database")
 		return nil, err

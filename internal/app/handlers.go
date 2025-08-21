@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/JohnnyConstantin/go_mart/internal/auth"
@@ -8,6 +9,7 @@ import (
 	"github.com/JohnnyConstantin/go_mart/internal/repository"
 	"github.com/JohnnyConstantin/go_mart/internal/store"
 	"github.com/JohnnyConstantin/go_mart/models"
+	route "github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 	"net/http"
 	"sort"
@@ -18,18 +20,10 @@ import (
 func Register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, err := getHandlersContexts(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Создаем слой репозитория для работы с пользователями
@@ -44,14 +38,14 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Валидация входных данных
-	if req.Login == "" || req.Password == "" {
-		http.Error(w, "Login and password are required", store.ErrNotValidFormatCode)
+	// Валидация логина/пароля (вынес все валидации в отдельные функции)
+	if !LoginPassValidation(req.Login, req.Password) {
+		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
 		return
 	}
 
-	// Хоть какая-то валидация длины пароля (возможно по тестам не пройдет?)
-	if len(req.Password) < 8 {
+	// Хоть какая-то валидация длины пароля
+	if !PasswordMinLengthValidation(req.Password) {
 		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
 		return
 	}
@@ -63,7 +57,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Хешируем пароль у объекта
-	err := user.HashPassword()
+	err = user.HashPassword()
 	if err != nil {
 		sugar.Errorf("Register: failed to hash password: %v", err)
 		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
@@ -115,18 +109,10 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	req := models.LoginReq{}
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, err := getHandlersContexts(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Создаем слой репозитория для работы с пользователями
@@ -138,8 +124,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Валидация
-	if req.Login == "" || req.Password == "" {
+	// Валидация логина/пароля (вынес все валидации в отдельные функции)
+	if !LoginPassValidation(req.Login, req.Password) {
 		http.Error(w, store.ErrNotValidFormat.Error(), store.ErrNotValidFormatCode)
 		return
 	}
@@ -199,25 +185,10 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем UserID из контекста
-	userID, ok := ctx.Value(userKey).(string)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Читаем номер заказа
@@ -229,7 +200,7 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверяем номер алгоритмом Луна
-	if !repository.ValidateOrderNumber(number) {
+	if !ValidateOrderNumber(number) {
 		http.Error(w, store.ErrOrderInvalidFormat.Error(), store.ErrOrderInvalidFormatCode)
 		return
 	}
@@ -266,25 +237,10 @@ func OrdersPOST(w http.ResponseWriter, r *http.Request) {
 func OrdersGET(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем UserID из контекста
-	userID, ok := ctx.Value(userKey).(string)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Создаем слой репозитория для работы с заказами
@@ -340,25 +296,10 @@ func Balance(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем UserID из контекста
-	userID, ok := ctx.Value(userKey).(string)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Создаем слой репозитория для работы с заказами
@@ -404,25 +345,10 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем UserID из контекста
-	userID, ok := ctx.Value(userKey).(string)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	var req models.WithdrawRequest
@@ -433,7 +359,7 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Проверка номера заказа алгоритмом Луна
-	if !repository.ValidateOrderNumber(req.Order) {
+	if !ValidateOrderNumber(req.Order) {
 		http.Error(w, store.ErrOrderInvalidFormat.Error(), store.ErrOrderInvalidFormatCode)
 		return
 	}
@@ -478,25 +404,10 @@ func Withdrawals(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Извлекаем бд из контекста
-	db, ok := ctx.Value(dbKey).(store.Database)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем логгер из контекста
-	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
-	}
-
-	// Извлекаем UserID из контекста
-	userID, ok := ctx.Value(userKey).(string)
-	if !ok {
-		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
-		return
+	// Вытаскивание контекстов (экспортировал в специализированный метод)
+	db, sugar, userID, err := getHandlersContextsWithUserID(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), store.ErrInternalServerCode)
 	}
 
 	// Создаем слой репозитория для работы с заказами
@@ -537,4 +448,86 @@ func Withdrawals(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		sugar.Errorf("WithdrawalsGET: failed to encode response: %v", err)
 	}
+}
+
+// Возвращает стандартные контексты
+func getHandlersContexts(ctx context.Context) (store.Database, zap.SugaredLogger, error) {
+
+	// Извлекаем логгер из контекста
+	sugar, ok := ctx.Value(loggerKey).(zap.SugaredLogger)
+	if !ok {
+		return nil, zap.SugaredLogger{}, store.ErrInternalServer
+	}
+
+	// Извлекаем бд из контекста
+	db, ok := ctx.Value(dbKey).(store.Database)
+	if !ok {
+		sugar.Error("failed to get database from context")
+		return nil, zap.SugaredLogger{}, store.ErrInternalServer
+	}
+
+	return db, sugar, nil
+}
+
+// Возвращает стандартные контексты вместе с контекстом пользователя
+func getHandlersContextsWithUserID(ctx context.Context) (store.Database, zap.SugaredLogger, string, error) {
+
+	// Извлекаем стандартные контексты
+	db, sugar, err := getHandlersContexts(ctx)
+	if err != nil {
+		return db, sugar, "", err
+	}
+
+	// Извлекаем UserID из контекста
+	userID, ok := ctx.Value(userKey).(string)
+	if !ok {
+		sugar.Error("failed to get userID from context")
+		return db, sugar, "", store.ErrInternalServer
+	}
+
+	return db, sugar, userID, nil
+}
+
+func CreateHandlers(db store.Database, router *route.Mux, sugar zap.SugaredLogger) {
+
+	//Накидываем хендлеры на роуты
+	router.Route("/", func(r route.Router) {
+		r.Route("/api", func(r route.Router) {
+			r.Route("/user", func(r route.Router) {
+				r.Post("/register",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							Register, sugar))) // Сам хендлер
+				r.Post("/login",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							Login, sugar))) // Сам хендлер
+				r.Post("/orders",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							WithAuth(
+								OrdersPOST), sugar))) // Сам хендлер
+				r.Get("/orders",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							WithAuth(
+								OrdersGET), sugar))) // Сам хендлер
+				r.Get("/balance",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							WithAuth(
+								Balance), sugar))) // Сам хендлер
+				r.Post("/balance/withdraw",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							WithAuth(
+								BalanceWithdraw), sugar))) // Сам хендлер
+				r.Get("/withdrawals",
+					GzipHandle( // Сжатие
+						WithLogging(db, // Логирование, прокидываем в него регистратор логов sugar
+							WithAuth(
+								Withdrawals), sugar))) // Сам хендлер
+			})
+		})
+	})
 }
