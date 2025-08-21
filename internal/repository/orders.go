@@ -178,13 +178,9 @@ func (r *OrderRepository) Withdraw(ctx context.Context, order *Order) error {
             WHERE user_id = $1
         ),
         insertion AS (
-            INSERT INTO orders (user_id, number, status, accrual, created_at)
+            INSERT INTO orders (user_id, number, status, accrual, uploaded_at)
             SELECT $1, $2, $3, $4, NOW()
             WHERE (SELECT balance FROM current_balance) + $4 >= 0
-            ON CONFLICT (number) DO UPDATE
-            SET status = EXCLUDED.status,
-                accrual = EXCLUDED.accrual,
-                updated_at = NOW()
             RETURNING 1
         )
         SELECT 1 FROM insertion

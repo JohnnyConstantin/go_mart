@@ -380,6 +380,7 @@ func BalanceWithdraw(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, store.ErrInsufficientBalance) {
 			http.Error(w, store.ErrInsufficientBalance.Error(), store.ErrInsufficientBalanceCode)
+			return
 		}
 		sugar.Errorf("BalanceWithdraw: withdraw error: %v", err)
 		http.Error(w, store.ErrInternalServer.Error(), store.ErrInternalServerCode)
