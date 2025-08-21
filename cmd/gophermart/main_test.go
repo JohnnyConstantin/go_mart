@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"github.com/JohnnyConstantin/go_mart/internal/config"
 	"github.com/JohnnyConstantin/go_mart/internal/store"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ func TestLoadEnvs(t *testing.T) {
 		os.Setenv("DATABASE_URI", "test_db_uri")
 		os.Setenv("ACCRUAL_SYSTEM_ADDRESS", "test_accrual_addr")
 
-		loadEnvs()
+		config.GetConfig()
 
 		assert.Equal(t, "test_addr:1234", config.Config.ServerAddress)
 		assert.Equal(t, "test_db_uri", config.Config.DatabaseURL)
@@ -30,7 +31,8 @@ func TestInitStorage(t *testing.T) {
 		// Устанавливаем невалидный DSN
 		config.Config.DatabaseURL = "invalid_dsn"
 
-		db, err := store.OpenDB(config.Config.DatabaseURL)
+		ctx := context.Background()
+		db, err := store.OpenDB(ctx, config.Config.DatabaseURL)
 		assert.Error(t, err)
 		assert.Nil(t, db)
 	})

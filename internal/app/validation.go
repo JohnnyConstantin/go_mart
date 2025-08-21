@@ -29,8 +29,5 @@ func LoginPassValidation(login string, password string) bool {
 }
 
 func PasswordMinLengthValidation(password string) bool {
-	if len(password) < 8 {
-		return false
-	}
-	return true
+	return len(password) <= 8
 }
